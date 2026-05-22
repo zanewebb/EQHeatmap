@@ -67,4 +67,5 @@ target_link_libraries(EQHeatmap
     PRIVATE
       juce::juce_audio_utils
       juce::juce_dsp
+      juce::juce_opengl
 )

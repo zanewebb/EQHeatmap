@@ -1,5 +1,6 @@
 #pragma once
 #include <JuceHeader.h>
+#include <juce_opengl/juce_opengl.h>
 #include "PluginProcessor.h"
 #include "Theme.h"
 
@@ -16,6 +17,17 @@ public:
 private:
     EQHeatmapAudioProcessor& processor;
     eq::HeatTheme theme;
+
+    // GPU-accelerate JUCE's Graphics calls (frees the CPU to spend on FFT).
+    juce::OpenGLContext openGLContext;
+
+    // Tiny source image (cols x rows). Repainted each tick from processor cell
+    // values, then stretched to the plot area with high-quality bilinear
+    // resampling — gives smooth cells instead of pixelated rectangles.
+    juce::Image heatmapImage;
+
+    // Cached layout rectangles, populated by resized() and consumed by paint().
+    juce::Rectangle<int> plotArea, controlsPanel;
 
     // Controls
     juce::GroupComponent controlsGroup { "controlsGroup", "Visualizer Controls" };

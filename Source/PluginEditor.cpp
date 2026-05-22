@@ -12,6 +12,18 @@ EQHeatmapAudioProcessorEditor::EQHeatmapAudioProcessorEditor (EQHeatmapAudioProc
     setLookAndFeel (&theme);
     setSize (1100, 760);
 
+    // Pre-allocate the source image at native cell resolution. Bilinear
+    // upsampling onto the plot does the visual smoothing.
+    heatmapImage = juce::Image (juce::Image::ARGB,
+                                EQHeatmapAudioProcessor::kPanBins,
+                                EQHeatmapAudioProcessor::kFreqBins,
+                                true);
+
+    // GPU-accelerate paint(). Safe to attach late; JUCE wires the GL render
+    // pipeline transparently behind the existing Graphics API.
+    openGLContext.setContinuousRepainting (false); // we repaint on our timer
+    openGLContext.attachTo (*this);
+
     addAndMakeVisible (controlsGroup);
     addAndMakeVisible (bleedGroup);
 
@@ -100,6 +112,7 @@ EQHeatmapAudioProcessorEditor::EQHeatmapAudioProcessorEditor (EQHeatmapAudioProc
 EQHeatmapAudioProcessorEditor::~EQHeatmapAudioProcessorEditor()
 {
     stopTimer();
+    openGLContext.detach();
     setLookAndFeel (nullptr);
 }
 
@@ -112,52 +125,53 @@ void EQHeatmapAudioProcessorEditor::updateRangeEnablement()
 
 void EQHeatmapAudioProcessorEditor::resized()
 {
-    auto r = getLocalBounds().reduced (12);
+    // Layout: heatmap is the hero on the left, controls live in a right-side drawer.
+    auto r = getLocalBounds().reduced (16);
 
-    // --- Controls group (top) ---
-    auto ctrlArea = r.removeFromTop (148);
-    controlsGroup.setBounds (ctrlArea);
+    const int rightPanelW = 296;
+    controlsPanel = r.removeFromRight (rightPanelW);
+    r.removeFromRight (12); // gap between heatmap and panel
+    plotArea = r;
 
-    auto inner = ctrlArea.reduced (10, 24); // inside the frame
-    const int colW = inner.getWidth() / 2;
-    auto leftCol  = inner.removeFromLeft (colW);
-    auto rightCol = inner;
+    // Drawer column.
+    auto col = controlsPanel;
 
-    auto lineH = 24;
-    auto placeRow = [lineH](juce::Rectangle<int>& col, juce::Label& L, juce::Component& C)
+    // Visualizer Controls — toggle + 6 stacked rows
+    auto ctrlBox = col.removeFromTop (300);
+    controlsGroup.setBounds (ctrlBox);
+    auto ctrlInner = ctrlBox.reduced (14, 30);
+
+    linkToSensitivity.setBounds (ctrlInner.removeFromTop (22));
+    ctrlInner.removeFromTop (8);
+
+    auto placeRow = [] (juce::Rectangle<int>& area, juce::Label& L, juce::Component& C)
     {
-        auto row = col.removeFromTop (lineH).reduced (0, 2);
-        auto lab = row.removeFromLeft (120);
-        L.setBounds (lab);
-        C.setBounds (row);
+        auto row = area.removeFromTop (32);
+        L.setBounds (row.removeFromLeft (110));
+        C.setBounds (row.reduced (0, 4));
+        area.removeFromTop (4);
     };
 
-    // link toggle at top-left
-    linkToSensitivity.setBounds (ctrlArea.getX() + 14, ctrlArea.getY() + 4, 180, 18);
+    placeRow (ctrlInner, lblSensitivity, sensitivity);
+    placeRow (ctrlInner, lblLower,       lowerDb);
+    placeRow (ctrlInner, lblUpper,       upperDb);
+    placeRow (ctrlInner, lblHotRef,      hotRefPct);
+    placeRow (ctrlInner, lblGamma,       gamma);
+    placeRow (ctrlInner, lblTrail,       trailMs);
 
-    // left column
-    placeRow (leftCol,  lblSensitivity, sensitivity);
-    placeRow (leftCol,  lblLower,       lowerDb);
-    placeRow (leftCol,  lblHotRef,      hotRefPct);
+    col.removeFromTop (14);
 
-    // right column
-    placeRow (rightCol, lblUpper,       upperDb);
-    placeRow (rightCol, lblGamma,       gamma);
-    placeRow (rightCol, lblTrail,       trailMs);
+    // Cell Bleed — toggle + 3 stacked rows
+    auto bleedBox = col.removeFromTop (190);
+    bleedGroup.setBounds (bleedBox);
+    auto bInner = bleedBox.reduced (14, 30);
 
-    // --- Bleed group (second row) ---
-    auto bleedArea = r.removeFromTop (96);
-    bleedGroup.setBounds (bleedArea);
+    bleedEnable.setBounds (bInner.removeFromTop (22));
+    bInner.removeFromTop (8);
 
-    auto bInner = bleedArea.reduced (10, 24);
-    auto bLeft  = bInner.removeFromLeft (bInner.getWidth() / 2);
-    auto bRight = bInner;
-
-    bleedEnable.setBounds (bleedArea.getX() + 14, bleedArea.getY() + 4, 150, 18);
-
-    placeRow (bLeft,  lblBleedFreq,  bleedFreqWidth);
-    placeRow (bLeft,  lblBleedPan,   bleedPanWidth);
-    placeRow (bRight, lblBleedDecay, bleedDecayPct);
+    placeRow (bInner, lblBleedFreq,  bleedFreqWidth);
+    placeRow (bInner, lblBleedPan,   bleedPanWidth);
+    placeRow (bInner, lblBleedDecay, bleedDecayPct);
 }
 
 static juce::String hzLabel (float f)
@@ -171,43 +185,55 @@ void EQHeatmapAudioProcessorEditor::paint (juce::Graphics& g)
     using P = EQHeatmapAudioProcessor;
     g.fillAll (eq::Brand::bg);
 
-    auto full = getLocalBounds().reduced (12);
+    // Heatmap canvas inset: gutter on the left for frequency labels,
+    // strip on the bottom for pan labels.
+    const int leftLabelW = 64;
+    const int bottomH    = 30;
+    auto plot = plotArea.withTrimmedLeft (leftLabelW).withTrimmedBottom (bottomH);
 
-    // plotting area lives below the two control panels
-    const int panelsH = 148 + 96;
-    auto plotBounds = full.withTrimmedTop (panelsH + 8);
-
-    // Heatmap canvas inset: gutter on the left for frequency labels, strip on the bottom for pan labels
-    const int leftLabelW = 96;
-    const int bottomH    = 28;
-    auto plot = plotBounds.withTrimmedLeft (leftLabelW).withTrimmedBottom (bottomH);
-
-    // Plot background — slightly darker than panels so the heat colors pop
+    // Plot background — slightly darker than panels so the heat colors pop.
     g.setColour (juce::Colour { 0xFF05060A });
-    g.fillRoundedRectangle (plot.toFloat(), 6.0f);
+    g.fillRoundedRectangle (plot.toFloat(), 8.0f);
 
     const int cols = P::kPanBins;
     const int rows = P::kFreqBins;
-    const float cw = (float) plot.getWidth()  / (float) cols;
-    const float ch = (float) plot.getHeight() / (float) rows;
 
-    // --- heatmap (magma palette) ---
-    for (int fy = 0; fy < rows; ++fy)
-        for (int px = 0; px < cols; ++px)
+    // --- Upload current cell values into the source image (rows flipped so
+    //     low freqs are at the bottom). Magma colormap applied per pixel.
+    {
+        juce::Image::BitmapData bd (heatmapImage, juce::Image::BitmapData::writeOnly);
+        for (int fy = 0; fy < rows; ++fy)
         {
-            const float v = processor.getCellValue (fy, px);
-            if (v <= 0.001f) continue; // leave plot background showing through
-            auto cell = juce::Rectangle<float> (
-                (float) plot.getX() + (float) px * cw,
-                (float) plot.getY() + (float) (rows - 1 - fy) * ch,
-                cw, ch);
-            g.setColour (eq::magma (v));
-            g.fillRect (cell);
+            const int yDst = rows - 1 - fy;
+            for (int px = 0; px < cols; ++px)
+            {
+                const float v = processor.getCellValue (fy, px);
+                const juce::Colour c = (v <= 0.001f) ? juce::Colour (juce::uint32 (0))
+                                                     : eq::magma (v);
+                bd.setPixelColour (px, yDst, c);
+            }
         }
+    }
+
+    // --- Draw the heatmap with bilinear interpolation (GPU-accelerated via the
+    //     attached OpenGL context). This is the single biggest visual upgrade:
+    //     the 192x128 source gets smoothly resampled instead of rendered as
+    //     discrete rectangles.
+    {
+        juce::Graphics::ScopedSaveState save (g);
+        // Clip to rounded plot rect so the heatmap respects the corner radius.
+        juce::Path clip;
+        clip.addRoundedRectangle (plot.toFloat(), 8.0f);
+        g.reduceClipRegion (clip);
+
+        g.setImageResamplingQuality (juce::Graphics::highResamplingQuality);
+        g.drawImage (heatmapImage, plot.toFloat(),
+                     juce::RectanglePlacement::stretchToFit, false);
+    }
 
     // Plot border
     g.setColour (eq::Brand::panelEdge);
-    g.drawRoundedRectangle (plot.toFloat(), 6.0f, 1.0f);
+    g.drawRoundedRectangle (plot.toFloat(), 8.0f, 1.0f);
 
     // --- frequency gridlines + tick labels ---
     const float fMin = processor.getFreqMinHz();
@@ -221,51 +247,41 @@ void EQHeatmapAudioProcessorEditor::paint (juce::Graphics& g)
         return (float) plot.getBottom() - t * (float) plot.getHeight();
     };
 
-    g.setColour (eq::Brand::grid.withAlpha (0.55f));
+    g.setColour (eq::Brand::grid.withAlpha (0.45f));
     for (float f : kTickHz)
         g.drawLine ((float) plot.getX(), freqToY (f), (float) plot.getRight(), freqToY (f), 1.0f);
 
     g.setColour (eq::Brand::textDim);
-    g.setFont (juce::Font (juce::FontOptions ("Inter", 11.0f, juce::Font::plain)));
+    g.setFont (juce::Font (juce::FontOptions ("Inter", 10.5f, juce::Font::plain)));
     for (float f : kTickHz)
     {
         const float y = freqToY (f) - 7.0f;
         g.drawFittedText (hzLabel (f),
-            juce::Rectangle<int> (plotBounds.getX() + 4, (int) y, leftLabelW - 10, 14),
+            juce::Rectangle<int> (plotArea.getX(), (int) y, leftLabelW - 6, 14),
             juce::Justification::centredRight, 1);
     }
 
     // --- pan labels ---
+    const float plotW = (float) plot.getWidth();
     g.setColour (eq::Brand::textDim);
-    for (int px = 0; px <= cols; px += 32)
+    g.setFont (juce::Font (juce::FontOptions ("Inter", 11.0f, juce::Font::plain)));
+    auto drawPan = [&] (const juce::String& s, float xRatio)
     {
-        const float t = juce::jlimit (0.0f, 1.0f, (float) px / (float) cols);
-        const float pan = -1.0f + 2.0f * t;
-        juce::String s = (px == 0) ? "L"
-                                   : (px == cols / 2) ? "C"
-                                                      : (px >= cols ? "R"
-                                                                    : juce::String (pan, 2));
+        const int x = (int) ((float) plot.getX() + xRatio * plotW) - 30;
         g.drawFittedText (s,
-            juce::Rectangle<int> ((int) ((float) plot.getX() + (float) px * cw) - 24,
-                                  plot.getBottom() + 4, 48, bottomH - 8),
+            juce::Rectangle<int> (x, plot.getBottom() + 6, 60, 14),
             juce::Justification::centred, 1);
-    }
+    };
+    drawPan ("L",    0.0f);
+    drawPan ("-0.5", 0.25f);
+    drawPan ("C",    0.5f);
+    drawPan ("+0.5", 0.75f);
+    drawPan ("R",    1.0f);
 
-    // --- axis titles ---
+    // --- axis title (pan only — frequency title removed; gutter is self-explanatory) ---
     g.setColour (eq::Brand::text);
-    g.setFont (juce::Font (juce::FontOptions ("Inter", 12.0f, juce::Font::bold)));
-    g.drawText ("PAN  ( L  <-  ->  R )",
-                juce::Rectangle<int> (plot.getX(), plot.getBottom() + 4, plot.getWidth(), bottomH - 4),
-                juce::Justification::centredBottom, false);
-    {
-        juce::Graphics::ScopedSaveState save (g);
-        const float cx = (float) plotBounds.getX() + 14.0f;
-        const float cy = (float) plot.getCentreY();
-        g.addTransform (juce::AffineTransform::rotation (-juce::MathConstants<float>::halfPi, cx, cy));
-        g.drawText ("FREQUENCY  ( log Hz )",
-                    juce::Rectangle<int> ((int) cx - 80,
-                                          (int) (cy - plot.getHeight() / 2),
-                                          160, plot.getHeight()),
-                    juce::Justification::centred, false);
-    }
+    g.setFont (juce::Font (juce::FontOptions ("Inter", 10.5f, juce::Font::bold)));
+    g.drawText ("PAN",
+                juce::Rectangle<int> (plot.getX(), plot.getBottom() + 20, plot.getWidth(), 12),
+                juce::Justification::centred, false);
 }
