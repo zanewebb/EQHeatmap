@@ -3,6 +3,12 @@ project(EQHeatmap VERSION 0.1.0)
 
 if (WIN32)
   set(VST3_COPY_DIR "$ENV{LOCALAPPDATA}/Programs/Common/VST3")
+elseif (APPLE)
+  set(VST3_COPY_DIR "$ENV{HOME}/Library/Audio/Plug-Ins/VST3")
+  set(AU_COPY_DIR   "$ENV{HOME}/Library/Audio/Plug-Ins/Components")
+  if (NOT CMAKE_OSX_DEPLOYMENT_TARGET)
+    set(CMAKE_OSX_DEPLOYMENT_TARGET "11.0" CACHE STRING "Minimum macOS version" FORCE)
+  endif()
 endif()
 
 
@@ -18,18 +24,24 @@ FetchContent_MakeAvailable(juce)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
+if (APPLE)
+  set(EQHEATMAP_FORMATS VST3 AU)
+else()
+  set(EQHEATMAP_FORMATS VST3)
+endif()
+
 juce_add_plugin(EQHeatmap
     COMPANY_NAME "Zane Inc."
-    BUNDLE_ID com.yourname.eqheatmap
+    BUNDLE_ID com.zaneinc.eqheatmap
     IS_SYNTH FALSE
     NEEDS_MIDI_INPUT FALSE
     NEEDS_MIDI_OUTPUT FALSE
     IS_MIDI_EFFECT FALSE
     EDITOR_WANTS_KEYBOARD_FOCUS FALSE
     COPY_PLUGIN_AFTER_BUILD FALSE
-    PLUGIN_MANUFACTURER_CODE Your
+    PLUGIN_MANUFACTURER_CODE Zane
     PLUGIN_CODE EHmp
-    FORMATS VST3
+    FORMATS ${EQHEATMAP_FORMATS}
     PRODUCT_NAME "EQHeatmap")
 
 juce_generate_juce_header(EQHeatmap)

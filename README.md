@@ -1,16 +1,26 @@
-# EQHeatmap (JUCE VST3) — README
+# EQHeatmap (JUCE) — README
 
-A stereo **EQ heat-map visualizer** plugin built with **JUCE** (VST3 for Windows).
-Grid = **10 log-spaced frequency bands** (bottom→top) × **8 pan sectors** (left→right).
-Cell color = **green → yellow → red** by averaged level in that frequency/pan cell.
+A stereo **EQ heat-map visualizer** plugin built with **JUCE**.
+Builds **VST3** on Windows and macOS, plus **AU** on macOS.
+Grid = **192 log-spaced frequency bands** (bottom→top) × **128 pan bins** (left→right).
+Cell color = averaged level in that frequency/pan cell.
 
 ---
 
-## Prerequisites (Windows)
+## Prerequisites
 
+### Windows
 * **CMake** (4.x) in PATH — `cmake --version`
 * **Visual Studio 2022** (or Build Tools) with **Desktop development with C++**
 * **Git** (optional, for FetchContent to pull JUCE; otherwise you can point to a local JUCE source checkout)
+
+### macOS
+* **Xcode** (full app — best dev experience), or **Xcode Command Line Tools** only — `xcode-select --install`
+* **CMake** 3.22+ (`brew install cmake`)
+* **Ninja** (optional but recommended if you don't have full Xcode — `brew install ninja`)
+* Targets **macOS 11.0+** by default (override with `-DCMAKE_OSX_DEPLOYMENT_TARGET=...`)
+
+`rebuild-and-install.sh` auto-detects the best available generator: full Xcode → Ninja → Unix Makefiles.
 
 > This project uses JUCE via **CMake FetchContent** (no separate install needed).
 
@@ -27,7 +37,9 @@ cd EQHeatmap
 
 ---
 
-## Configure & Build (Release, VST3)
+## Configure & Build
+
+### Windows (Release, VST3)
 
 ```powershell
 # Configure (VS 2022 solution; x64)
@@ -37,17 +49,35 @@ cmake -S . -B build -G "Visual Studio 17 2022" -A x64
 cmake --build build --config Release --target EQHeatmap_VST3
 ```
 
-**Where is the plugin built?**
-
+Output:
 ```
 build\EQHeatmap_artefacts\Release\VST3\EQHeatmap.vst3
 ```
 
-> `.vst3` is a **folder (bundle)** containing the plugin binary.
+### macOS (Release, VST3 + AU)
+
+```bash
+# One-shot: configure, build, install both formats to ~/Library/Audio/Plug-Ins
+./rebuild-and-install.sh
+
+# Or manually:
+cmake -S . -B build -G Xcode
+cmake --build build --config Release --target EQHeatmap_All
+```
+
+Output:
+```
+build/EQHeatmap_artefacts/Release/VST3/EQHeatmap.vst3
+build/EQHeatmap_artefacts/Release/AU/EQHeatmap.component
+```
+
+> `.vst3` and `.component` are **folder bundles** containing the plugin binary.
 
 ---
 
-## Install the plugin (no admin)
+## Install the plugin
+
+### Windows (no admin)
 
 Copy the bundle to the **per-user** VST3 folder (scanned by REAPER & Ableton):
 
@@ -63,6 +93,17 @@ System-wide (admin):
 ```
 C:\Program Files\Common Files\VST3
 ```
+
+### macOS (no admin)
+
+`rebuild-and-install.sh` handles this automatically. Manual install:
+
+```bash
+cp -R build/EQHeatmap_artefacts/Release/VST3/EQHeatmap.vst3       ~/Library/Audio/Plug-Ins/VST3/
+cp -R build/EQHeatmap_artefacts/Release/AU/EQHeatmap.component    ~/Library/Audio/Plug-Ins/Components/
+```
+
+Logic / GarageBand load **AU**; Ableton / REAPER / Bitwig load **VST3** (and AU on macOS where supported).
 
 > This project sets `COPY_PLUGIN_AFTER_BUILD TRUE`. If you get a **permission** error during build, either run the build in an **elevated** shell or set a writable copy dir (see **Tips → Control where JUCE copies the plugin**).
 
@@ -92,9 +133,22 @@ cmake --build build --config Release --target EQHeatmap_VST3
 
 ### Ableton Live
 
-1. Preferences → **Plug-Ins** → enable **Use VST3 Plug-In System Folders**.
+1. Preferences → **Plug-Ins** → enable **Use VST3 Plug-In System Folders** (and **Use Audio Units** on macOS).
 2. **Rescan** (hold **Alt** while clicking Rescan to force).
-3. Find **EQHeatmap** under **Plug-Ins → VST3** and drop it on a track or the **Master**.
+3. Find **EQHeatmap** under **Plug-Ins → VST3** (or **Audio Units → Zane Inc.** on macOS) and drop it on a track or the **Master**.
+
+### Logic Pro / GarageBand (macOS only)
+
+1. Install the **AU** bundle (see above) — Logic/GarageBand only load AU, not VST3.
+2. On next launch, Logic runs AU validation automatically. If the plugin doesn't appear, force a fresh scan by deleting `~/Library/Caches/AudioUnitCache/*` and relaunching, or hold **Control+Option** while opening the AU manager.
+3. Insert **EQHeatmap** on any track or the Stereo Out.
+
+### Testing without a DAW (macOS or Windows)
+
+JUCE ships an **AudioPluginHost** in its source tree. After your first build it lives at
+`build/_deps/juce-src/extras/AudioPluginHost/`. Open the `.jucer` (or build it via its own CMakeLists),
+load `EQHeatmap.vst3`, wire an audio input device to the plugin to the audio output, and you have a
+zero-friction preview environment.
 
 ---
 
@@ -226,7 +280,7 @@ Get-ChildItem -Recurse "$env:LOCALAPPDATA\Programs\Common\VST3\EQHeatmap.vst3"
 ```
 
 
-## How to use `rebuild-and-install.ps1`
+## How to use `rebuild-and-install.ps1` (Windows)
 ```
 # First time, you may need to allow this script to run in your session:
 # Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
@@ -239,6 +293,22 @@ Get-ChildItem -Recurse "$env:LOCALAPPDATA\Programs\Common\VST3\EQHeatmap.vst3"
 
 # If REAPER/Ableton might be locking the file:
 .\rebuild-and-install.ps1 -KillDAWs
+```
+
+## How to use `rebuild-and-install.sh` (macOS)
+```bash
+# Clean, rebuild, install both AU + VST3 to ~/Library/Audio/Plug-Ins:
+./rebuild-and-install.sh
+
+# Build Debug instead of Release:
+./rebuild-and-install.sh --config Debug
+
+# Skip one format:
+./rebuild-and-install.sh --skip-au
+./rebuild-and-install.sh --skip-vst3
+
+# Quit running DAWs first (release file locks):
+./rebuild-and-install.sh --kill-daws
 ```
 
 ---
