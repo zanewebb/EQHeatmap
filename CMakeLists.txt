@@ -50,7 +50,9 @@ target_sources(EQHeatmap PRIVATE
     Source/PluginProcessor.cpp
     Source/PluginProcessor.h
     Source/PluginEditor.cpp
-    Source/PluginEditor.h)
+    Source/PluginEditor.h
+    Source/Theme.cpp
+    Source/Theme.h)
 
 target_compile_definitions(EQHeatmap
     PRIVATE

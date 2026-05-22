@@ -9,6 +9,7 @@ static const float kTickHz[] = {
 EQHeatmapAudioProcessorEditor::EQHeatmapAudioProcessorEditor (EQHeatmapAudioProcessor& p)
 : juce::AudioProcessorEditor (&p), processor (p)
 {
+    setLookAndFeel (&theme);
     setSize (1100, 760);
 
     addAndMakeVisible (controlsGroup);
@@ -99,6 +100,7 @@ EQHeatmapAudioProcessorEditor::EQHeatmapAudioProcessorEditor (EQHeatmapAudioProc
 EQHeatmapAudioProcessorEditor::~EQHeatmapAudioProcessorEditor()
 {
     stopTimer();
+    setLookAndFeel (nullptr);
 }
 
 void EQHeatmapAudioProcessorEditor::updateRangeEnablement()
@@ -164,76 +166,50 @@ static juce::String hzLabel (float f)
     return juce::String (std::round (f));
 }
 
-juce::Colour EQHeatmapAudioProcessorEditor::heatColour (float t)
-{
-    // 0 -> black; 0..0.5 black->green; 0.5..1 green->yellow->red
-    t = juce::jlimit (0.0f, 1.0f, t);
-    if (t <= 0.001f) return juce::Colours::black;
-
-    if (t < 0.5f) {
-        const float u = t / 0.5f;  return juce::Colour::fromFloatRGBA (0.0f, u, 0.0f, 1.0f);
-    } else {
-        const float u = (t - 0.5f) / 0.5f;
-        if (u < 0.5f) return juce::Colour::fromFloatRGBA (2.0f * u, 1.0f, 0.0f, 1.0f);
-        const float v = (u - 0.5f) * 2.0f; return juce::Colour::fromFloatRGBA (1.0f, 1.0f - v, 0.0f, 1.0f);
-    }
-}
-
 void EQHeatmapAudioProcessorEditor::paint (juce::Graphics& g)
 {
     using P = EQHeatmapAudioProcessor;
-    g.fillAll (juce::Colours::black);
+    g.fillAll (eq::Brand::bg);
 
     auto full = getLocalBounds().reduced (12);
 
-    // separator below panels
+    // plotting area lives below the two control panels
     const int panelsH = 148 + 96;
-    g.setColour (juce::Colours::white.withAlpha (0.15f));
-    g.drawLine ((float)full.getX(), (float)(full.getY() + panelsH + 4),
-                (float)full.getRight(), (float)(full.getY() + panelsH + 4), 2.0f);
-
-    // plotting area
     auto plotBounds = full.withTrimmedTop (panelsH + 8);
-    const int cols = P::kPanBins;
-    const int rows = P::kFreqBins;
 
-    const int leftLabelW = 90;   // wide gutter for y-axis title
-    const int bottomH    = 26;
+    // Heatmap canvas inset: gutter on the left for frequency labels, strip on the bottom for pan labels
+    const int leftLabelW = 96;
+    const int bottomH    = 28;
     auto plot = plotBounds.withTrimmedLeft (leftLabelW).withTrimmedBottom (bottomH);
 
-    const float cw = (float) plot.getWidth()  / cols;
-    const float ch = (float) plot.getHeight() / rows;
+    // Plot background — slightly darker than panels so the heat colors pop
+    g.setColour (juce::Colour { 0xFF05060A });
+    g.fillRoundedRectangle (plot.toFloat(), 6.0f);
 
-    // --- heatmap ---
+    const int cols = P::kPanBins;
+    const int rows = P::kFreqBins;
+    const float cw = (float) plot.getWidth()  / (float) cols;
+    const float ch = (float) plot.getHeight() / (float) rows;
+
+    // --- heatmap (magma palette) ---
     for (int fy = 0; fy < rows; ++fy)
         for (int px = 0; px < cols; ++px)
         {
             const float v = processor.getCellValue (fy, px);
-            auto cell = juce::Rectangle<float>(
-                plot.getX() + px * cw,
-                plot.getY() + (rows - 1 - fy) * ch,
-                cw, ch
-            );
-            g.setColour (heatColour (v));
+            if (v <= 0.001f) continue; // leave plot background showing through
+            auto cell = juce::Rectangle<float> (
+                (float) plot.getX() + (float) px * cw,
+                (float) plot.getY() + (float) (rows - 1 - fy) * ch,
+                cw, ch);
+            g.setColour (eq::magma (v));
             g.fillRect (cell);
         }
 
-    // --- axes & labels ---
-    g.setColour (juce::Colours::white.withAlpha (0.9f));
-    g.setFont (12.0f);
+    // Plot border
+    g.setColour (eq::Brand::panelEdge);
+    g.drawRoundedRectangle (plot.toFloat(), 6.0f, 1.0f);
 
-    // Pan labels (L, C, R)
-    for (int px = 0; px <= cols; px += 32)
-    {
-        float t = juce::jlimit (0.0f, 1.0f, (float) px / cols);
-        float pan = -1.0f + 2.0f * t;
-        juce::String s = (px == 0) ? "L" : (px == cols/2) ? "C" : (px >= cols ? "R" : juce::String (pan, 2));
-        g.drawFittedText (s,
-            juce::Rectangle<int> ((int)(plot.getX() + px * cw) - 24, plot.getBottom(), 48, bottomH),
-            juce::Justification::centred, 1);
-    }
-
-    // Frequency ticks (log mapping)
+    // --- frequency gridlines + tick labels ---
     const float fMin = processor.getFreqMinHz();
     const float fMax = processor.getFreqMaxHz();
     const float logSpan = std::log (fMax / fMin);
@@ -241,37 +217,55 @@ void EQHeatmapAudioProcessorEditor::paint (juce::Graphics& g)
     auto freqToY = [&] (float f) -> float
     {
         float ff = juce::jlimit (fMin, fMax, f);
-        float t = std::log (ff / fMin) / logSpan;  // 0..1 bottom->top
-        return plot.getBottom() - t * plot.getHeight();
+        float t = std::log (ff / fMin) / logSpan;
+        return (float) plot.getBottom() - t * (float) plot.getHeight();
     };
 
-    // Guide lines
-    g.setColour (juce::Colours::white.withAlpha (0.15f));
+    g.setColour (eq::Brand::grid.withAlpha (0.55f));
     for (float f : kTickHz)
         g.drawLine ((float) plot.getX(), freqToY (f), (float) plot.getRight(), freqToY (f), 1.0f);
 
-    // Tick labels
-    g.setColour (juce::Colours::white.withAlpha (0.85f));
+    g.setColour (eq::Brand::textDim);
+    g.setFont (juce::Font (juce::FontOptions ("Inter", 11.0f, juce::Font::plain)));
     for (float f : kTickHz)
     {
         const float y = freqToY (f) - 7.0f;
         g.drawFittedText (hzLabel (f),
-            juce::Rectangle<int> (plotBounds.getX(), (int) y, leftLabelW - 6, 14),
+            juce::Rectangle<int> (plotBounds.getX() + 4, (int) y, leftLabelW - 10, 14),
             juce::Justification::centredRight, 1);
     }
 
-    // Axis titles
-    g.setFont (14.0f);
-    g.drawText ("Pan (L <-> R)",
-                juce::Rectangle<int> (plot.getX(), plot.getBottom(), plot.getWidth(), bottomH),
-                juce::Justification::centred, false);
+    // --- pan labels ---
+    g.setColour (eq::Brand::textDim);
+    for (int px = 0; px <= cols; px += 32)
+    {
+        const float t = juce::jlimit (0.0f, 1.0f, (float) px / (float) cols);
+        const float pan = -1.0f + 2.0f * t;
+        juce::String s = (px == 0) ? "L"
+                                   : (px == cols / 2) ? "C"
+                                                      : (px >= cols ? "R"
+                                                                    : juce::String (pan, 2));
+        g.drawFittedText (s,
+            juce::Rectangle<int> ((int) ((float) plot.getX() + (float) px * cw) - 24,
+                                  plot.getBottom() + 4, 48, bottomH - 8),
+            juce::Justification::centred, 1);
+    }
+
+    // --- axis titles ---
+    g.setColour (eq::Brand::text);
+    g.setFont (juce::Font (juce::FontOptions ("Inter", 12.0f, juce::Font::bold)));
+    g.drawText ("PAN  ( L  <-  ->  R )",
+                juce::Rectangle<int> (plot.getX(), plot.getBottom() + 4, plot.getWidth(), bottomH - 4),
+                juce::Justification::centredBottom, false);
     {
         juce::Graphics::ScopedSaveState save (g);
-        const float cx = (float)plotBounds.getX() + 14.0f;
-        const float cy = (float)plot.getCentreY();
+        const float cx = (float) plotBounds.getX() + 14.0f;
+        const float cy = (float) plot.getCentreY();
         g.addTransform (juce::AffineTransform::rotation (-juce::MathConstants<float>::halfPi, cx, cy));
-        g.drawText ("Frequency (log)",
-                    juce::Rectangle<int> ((int)cx - 60, (int)(cy - plot.getHeight()/2), 120, plot.getHeight()),
+        g.drawText ("FREQUENCY  ( log Hz )",
+                    juce::Rectangle<int> ((int) cx - 80,
+                                          (int) (cy - plot.getHeight() / 2),
+                                          160, plot.getHeight()),
                     juce::Justification::centred, false);
     }
 }

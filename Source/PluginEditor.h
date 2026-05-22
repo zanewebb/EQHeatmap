@@ -1,6 +1,7 @@
 #pragma once
 #include <JuceHeader.h>
 #include "PluginProcessor.h"
+#include "Theme.h"
 
 class EQHeatmapAudioProcessorEditor : public juce::AudioProcessorEditor,
                                       private juce::Timer
@@ -14,6 +15,7 @@ public:
 
 private:
     EQHeatmapAudioProcessor& processor;
+    eq::HeatTheme theme;
 
     // Controls
     juce::GroupComponent controlsGroup { "controlsGroup", "Visualizer Controls" };
@@ -45,7 +47,6 @@ private:
 
     void timerCallback() override { repaint(); }  // 60 Hz
 
-    static juce::Colour heatColour (float t);
     void updateRangeEnablement();
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (EQHeatmapAudioProcessorEditor)
