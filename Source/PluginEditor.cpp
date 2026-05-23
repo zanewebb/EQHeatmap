@@ -49,6 +49,7 @@ EQHeatmapAudioProcessorEditor::EQHeatmapAudioProcessorEditor (EQHeatmapAudioProc
     prepSlider (hotRefPct,     5.0, 120.0, 1.0, "%");
     prepSlider (gamma,         0.3,   2.5, 0.01, "");
     prepSlider (trailMs,       0.0, 2000.0, 1.0, "ms");
+    prepSlider (peakFocus,     0.0, 100.0, 1.0, "%");
 
     addAndMakeVisible (sensitivity);
     addAndMakeVisible (lowerDb);
@@ -56,6 +57,7 @@ EQHeatmapAudioProcessorEditor::EQHeatmapAudioProcessorEditor (EQHeatmapAudioProc
     addAndMakeVisible (hotRefPct);
     addAndMakeVisible (gamma);
     addAndMakeVisible (trailMs);
+    addAndMakeVisible (peakFocus);
 
     prepLabel (lblSensitivity, "Sensitivity (dB)");
     prepLabel (lblLower,       "Lower (dB)");
@@ -63,6 +65,7 @@ EQHeatmapAudioProcessorEditor::EQHeatmapAudioProcessorEditor (EQHeatmapAudioProc
     prepLabel (lblHotRef,      "Hot Ref (%)");
     prepLabel (lblGamma,       "Gamma");
     prepLabel (lblTrail,       "Trail (ms)");
+    prepLabel (lblPeakFocus,   "Peak Focus");
 
     addAndMakeVisible (lblSensitivity);
     addAndMakeVisible (lblLower);
@@ -70,6 +73,7 @@ EQHeatmapAudioProcessorEditor::EQHeatmapAudioProcessorEditor (EQHeatmapAudioProc
     addAndMakeVisible (lblHotRef);
     addAndMakeVisible (lblGamma);
     addAndMakeVisible (lblTrail);
+    addAndMakeVisible (lblPeakFocus);
 
     // --- bleed controls ---
     addAndMakeVisible (bleedEnable);
@@ -97,6 +101,7 @@ EQHeatmapAudioProcessorEditor::EQHeatmapAudioProcessorEditor (EQHeatmapAudioProc
     hotRefAttachment      = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(processor.apvts, "hotRefPct", hotRefPct);
     gammaAttachment       = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(processor.apvts, "gamma", gamma);
     trailAttachment       = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(processor.apvts, "trailMs", trailMs);
+    peakFocusAttachment   = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(processor.apvts, "peakFocus", peakFocus);
 
     bleedEnableAttachment   = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment>(processor.apvts, "bleedEnable", bleedEnable);
     bleedFreqWidthAttachment= std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(processor.apvts, "bleedFreqWidth", bleedFreqWidth);
@@ -140,8 +145,8 @@ void EQHeatmapAudioProcessorEditor::resized()
     // Drawer column.
     auto col = controlsPanel;
 
-    // Visualizer Controls — toggle + 6 stacked rows
-    auto ctrlBox = col.removeFromTop (300);
+    // Visualizer Controls — toggle + 7 stacked rows
+    auto ctrlBox = col.removeFromTop (336);
     controlsGroup.setBounds (ctrlBox);
     auto ctrlInner = ctrlBox.reduced (14, 30);
 
@@ -162,6 +167,7 @@ void EQHeatmapAudioProcessorEditor::resized()
     placeRow (ctrlInner, lblHotRef,      hotRefPct);
     placeRow (ctrlInner, lblGamma,       gamma);
     placeRow (ctrlInner, lblTrail,       trailMs);
+    placeRow (ctrlInner, lblPeakFocus,   peakFocus);
 
     col.removeFromTop (14);
 
@@ -210,6 +216,28 @@ void EQHeatmapAudioProcessorEditor::paint (juce::Graphics& g)
 
     // --- Upload current cell values into the source image (rows flipped so
     //     low freqs are at the bottom). Magma colormap applied per pixel.
+    //     With Peak Focus enabled, cells are softened relative to the frame's max.
+
+    // First pass: compute per-frame max of the curve-applied values (for peak focus).
+    const float focus    = processor.apvts.getRawParameterValue ("peakFocus")->load() / 100.0f;
+    const float focusExp = 1.0f + focus * 4.0f;
+    float frameMaxCurved = 0.001f; // small floor to avoid divide-by-zero
+
+    if (focus > 0.001f)
+    {
+        for (int fy = 0; fy < rows; ++fy)
+            for (int px = 0; px < cols; ++px)
+            {
+                const float v = processor.getCellValue (fy, px);
+                if (v > 0.05f)
+                {
+                    const float vc = eq::applyDisplayCurve (v);
+                    if (vc > frameMaxCurved) frameMaxCurved = vc;
+                }
+            }
+    }
+
+    // Second pass: render with optional peak-relative softening.
     {
         juce::Image::BitmapData bd (heatmapImage, juce::Image::BitmapData::writeOnly);
         for (int fy = 0; fy < rows; ++fy)
@@ -222,7 +250,11 @@ void EQHeatmapAudioProcessorEditor::paint (juce::Graphics& g)
                     bd.setPixelColour (px, yDst, juce::Colour (juce::uint32 (0)));
                     continue;
                 }
-                bd.setPixelColour (px, yDst, eq::magma (eq::applyDisplayCurve (v)));
+                const float vc = eq::applyDisplayCurve (v);
+                const float vd = (focus > 0.001f)
+                    ? std::pow (vc / frameMaxCurved, focusExp) * frameMaxCurved
+                    : vc;
+                bd.setPixelColour (px, yDst, eq::magma (vd));
             }
         }
     }

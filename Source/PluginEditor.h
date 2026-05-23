@@ -41,8 +41,8 @@ private:
 
     // Top panel
     juce::ToggleButton linkToSensitivity { "Link to Sensitivity" };
-    juce::Slider sensitivity, lowerDb, upperDb, hotRefPct, gamma, trailMs;
-    juce::Label  lblSensitivity, lblLower, lblUpper, lblHotRef, lblGamma, lblTrail;
+    juce::Slider sensitivity, lowerDb, upperDb, hotRefPct, gamma, trailMs, peakFocus;
+    juce::Label  lblSensitivity, lblLower, lblUpper, lblHotRef, lblGamma, lblTrail, lblPeakFocus;
 
     // Bleed panel (4 controls incl. toggle)
     juce::ToggleButton bleedEnable { "Enable Bleed" };
@@ -59,6 +59,7 @@ private:
     std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> hotRefAttachment;
     std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> gammaAttachment;
     std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> trailAttachment;
+    std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> peakFocusAttachment;
 
     std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> bleedEnableAttachment;
     std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> bleedFreqWidthAttachment;
