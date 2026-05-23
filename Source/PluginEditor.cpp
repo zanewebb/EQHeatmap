@@ -208,9 +208,11 @@ void EQHeatmapAudioProcessorEditor::paint (juce::Graphics& g)
             for (int px = 0; px < cols; ++px)
             {
                 const float v = processor.getCellValue (fy, px);
-                const juce::Colour c = (v <= 0.001f) ? juce::Colour (juce::uint32 (0))
-                                                     : eq::magma (v);
-                bd.setPixelColour (px, yDst, c);
+                if (v <= 0.05f) {
+                    bd.setPixelColour (px, yDst, juce::Colour (juce::uint32 (0)));
+                    continue;
+                }
+                bd.setPixelColour (px, yDst, eq::magma (eq::applyDisplayCurve (v)));
             }
         }
     }
