@@ -1,5 +1,6 @@
 #pragma once
 #include <JuceHeader.h>
+#include <cmath>
 
 namespace eq
 {
@@ -20,6 +21,17 @@ namespace Brand
 // Perceptually-uniform-ish magma lookup. t in [0,1].
 // Hand-picked stops approximated from matplotlib's magma colormap.
 juce::Colour magma (float t) noexcept;
+
+// Maps [0,1] -> [0,1] but compresses low values toward 0 and expands high values.
+// Use before magma() so low-energy cells collapse to black and peaks dominate the color range.
+// applyDisplayCurve(0.0)  == 0.0
+// applyDisplayCurve(0.05) ≈ 0.16
+// applyDisplayCurve(0.5)  ≈ 0.76
+// applyDisplayCurve(1.0)  == 1.0
+inline float applyDisplayCurve (float v) noexcept
+{
+    return std::log1p (9.0f * juce::jlimit (0.0f, 1.0f, v)) / std::log (10.0f);
+}
 
 // LookAndFeel that gives the plugin a modern, dark, audio-tool aesthetic.
 class HeatTheme : public juce::LookAndFeel_V4
