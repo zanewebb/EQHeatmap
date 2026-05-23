@@ -53,7 +53,7 @@ juce::AudioProcessorValueTreeState::ParameterLayout EQHeatmapAudioProcessor::cre
         juce::NormalisableRange<float> (5.0f, 120.0f, 1.0f), 80.0f));
     params.push_back (std::make_unique<juce::AudioParameterFloat>(
         "gamma", "Gamma",
-        juce::NormalisableRange<float> (0.3f, 2.5f, 0.01f), 0.8f));
+        juce::NormalisableRange<float> (0.3f, 2.5f, 0.01f), 1.4f));
     params.push_back (std::make_unique<juce::AudioParameterFloat>(
         "trailMs", "Trail (ms)",
         juce::NormalisableRange<float> (0.0f, 2000.0f, 1.0f), 350.0f));
