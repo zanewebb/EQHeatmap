@@ -97,6 +97,9 @@ private:
     std::atomic<float>* bleedPanWidthParam = nullptr;  // 0..32 bins
     std::atomic<float>* bleedDecayPctParam = nullptr;  // 0..95 %
 
+    // Readout / HUD
+    std::atomic<float>* readoutFollowCursorParam = nullptr;  // 0/1 (bool)
+
     void resetAnalysisBuffers();
     void buildBinToRowMap();
     void pushBlockToFifo (const juce::AudioBuffer<float>& buffer);

@@ -22,6 +22,8 @@ EQHeatmapAudioProcessor::EQHeatmapAudioProcessor()
     bleedPanWidthParam  = apvts.getRawParameterValue ("bleedPanWidth");
     bleedDecayPctParam  = apvts.getRawParameterValue ("bleedDecayPct");
 
+    readoutFollowCursorParam = apvts.getRawParameterValue ("readoutFollowCursor");
+
     fftTimeL.allocate (kFftSize, true);
     fftTimeR.allocate (kFftSize, true);
     fftFreqL.allocate (2 * kFftSize, true);
@@ -70,6 +72,10 @@ juce::AudioProcessorValueTreeState::ParameterLayout EQHeatmapAudioProcessor::cre
     params.push_back (std::make_unique<juce::AudioParameterFloat>(
         "bleedDecayPct", "Bleed Decay (%)",
         juce::NormalisableRange<float> (0.0f, 95.0f, 1.0f), 50.0f));
+
+    // Readout / HUD
+    params.push_back (std::make_unique<juce::AudioParameterBool>(
+        "readoutFollowCursor", "Readout: Follow Cursor", true));
 
     return { params.begin(), params.end() };
 }
