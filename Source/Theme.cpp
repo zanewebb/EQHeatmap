@@ -24,6 +24,7 @@ juce::Colour magma (float t) noexcept
         { 0.948f, 0.327f, 0.343f },
         { 0.989f, 0.518f, 0.349f },
         { 0.987f, 0.991f, 0.749f },
+        { 1.000f, 1.000f, 1.000f },
     };
     constexpr int n = (int) (sizeof (stops) / sizeof (stops[0]));
     const float scaled = t * (n - 1);
