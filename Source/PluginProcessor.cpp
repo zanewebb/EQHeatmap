@@ -73,7 +73,10 @@ juce::AudioProcessorValueTreeState::ParameterLayout EQHeatmapAudioProcessor::cre
         "bleedDecayPct", "Bleed Decay (%)",
         juce::NormalisableRange<float> (0.0f, 95.0f, 1.0f), 50.0f));
 
-    // Peak isolation
+    // Display-side filters
+    params.push_back (std::make_unique<juce::AudioParameterFloat>(
+        "noiseGate", "Noise Gate (%)",
+        juce::NormalisableRange<float> (0.0f, 50.0f, 0.5f), 5.0f));
     params.push_back (std::make_unique<juce::AudioParameterFloat>(
         "peakFocus", "Peak Focus (%)",
         juce::NormalisableRange<float> (0.0f, 100.0f, 1.0f), 0.0f));

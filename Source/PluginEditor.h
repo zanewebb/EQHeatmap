@@ -41,8 +41,8 @@ private:
 
     // Top panel
     juce::ToggleButton linkToSensitivity { "Link to Sensitivity" };
-    juce::Slider sensitivity, lowerDb, upperDb, hotRefPct, gamma, trailMs, peakFocus;
-    juce::Label  lblSensitivity, lblLower, lblUpper, lblHotRef, lblGamma, lblTrail, lblPeakFocus;
+    juce::Slider sensitivity, lowerDb, upperDb, hotRefPct, gamma, trailMs, noiseGate, peakFocus;
+    juce::Label  lblSensitivity, lblLower, lblUpper, lblHotRef, lblGamma, lblTrail, lblNoiseGate, lblPeakFocus;
 
     // Bleed panel (4 controls incl. toggle)
     juce::ToggleButton bleedEnable { "Enable Bleed" };
@@ -59,6 +59,7 @@ private:
     std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> hotRefAttachment;
     std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> gammaAttachment;
     std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> trailAttachment;
+    std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> noiseGateAttachment;
     std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> peakFocusAttachment;
 
     std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> bleedEnableAttachment;
@@ -67,6 +68,9 @@ private:
     std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> bleedDecayPctAttachment;
 
     std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> readoutFollowAttachment;
+
+    // Owns the tooltip pop-up window. Must outlive any control that calls setTooltip.
+    juce::TooltipWindow tooltipWindow { this, 700 };
 
     void timerCallback() override { repaint(); }  // 60 Hz
 

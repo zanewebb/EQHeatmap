@@ -49,6 +49,7 @@ EQHeatmapAudioProcessorEditor::EQHeatmapAudioProcessorEditor (EQHeatmapAudioProc
     prepSlider (hotRefPct,     5.0, 120.0, 1.0, "%");
     prepSlider (gamma,         0.3,   2.5, 0.01, "");
     prepSlider (trailMs,       0.0, 2000.0, 1.0, "ms");
+    prepSlider (noiseGate,     0.0,  50.0, 0.5, "%");
     prepSlider (peakFocus,     0.0, 100.0, 1.0, "%");
 
     addAndMakeVisible (sensitivity);
@@ -57,6 +58,7 @@ EQHeatmapAudioProcessorEditor::EQHeatmapAudioProcessorEditor (EQHeatmapAudioProc
     addAndMakeVisible (hotRefPct);
     addAndMakeVisible (gamma);
     addAndMakeVisible (trailMs);
+    addAndMakeVisible (noiseGate);
     addAndMakeVisible (peakFocus);
 
     prepLabel (lblSensitivity, "Sensitivity (dB)");
@@ -65,6 +67,7 @@ EQHeatmapAudioProcessorEditor::EQHeatmapAudioProcessorEditor (EQHeatmapAudioProc
     prepLabel (lblHotRef,      "Hot Ref (%)");
     prepLabel (lblGamma,       "Gamma");
     prepLabel (lblTrail,       "Trail (ms)");
+    prepLabel (lblNoiseGate,   "Noise Gate");
     prepLabel (lblPeakFocus,   "Peak Focus");
 
     addAndMakeVisible (lblSensitivity);
@@ -73,7 +76,19 @@ EQHeatmapAudioProcessorEditor::EQHeatmapAudioProcessorEditor (EQHeatmapAudioProc
     addAndMakeVisible (lblHotRef);
     addAndMakeVisible (lblGamma);
     addAndMakeVisible (lblTrail);
+    addAndMakeVisible (lblNoiseGate);
     addAndMakeVisible (lblPeakFocus);
+
+    // Tooltips — explain each control. Show after 700ms hover (set on TooltipWindow ctor).
+    linkToSensitivity.setTooltip ("When ON, Lower/Upper dB are slaved to Sensitivity. Turn OFF to set them independently.");
+    sensitivity      .setTooltip ("Total dynamic range shown when Link is ON. Higher = more colors visible at quiet levels.");
+    lowerDb          .setTooltip ("Quietest level shown. Below this floor, cells stay dark. Only active when Link is OFF.");
+    upperDb          .setTooltip ("Loudest level shown. Above this ceiling, cells max out at full brightness. Only active when Link is OFF.");
+    hotRefPct        .setTooltip ("Where full-brightness cells map within the dynamic range. Lower = brighter overall; higher = only true peaks reach white.");
+    gamma            .setTooltip ("Brightness curve. <1 brightens dim cells; >1 darkens dim cells and tightens contrast around peaks.");
+    trailMs          .setTooltip ("How long cell brightness lingers after the energy stops. Lower = snappier; higher = smoother but laggier.");
+    noiseGate        .setTooltip ("Cells below this fraction of full scale stay dark. Use to hide quiet hiss and noise floor.");
+    peakFocus        .setTooltip ("Per-frame compression: dims cells below the current frame's brightest cell. Higher = sharper peak isolation, less diffuse glow.");
 
     // --- bleed controls ---
     addAndMakeVisible (bleedEnable);
@@ -93,6 +108,11 @@ EQHeatmapAudioProcessorEditor::EQHeatmapAudioProcessorEditor (EQHeatmapAudioProc
     addAndMakeVisible (lblBleedPan);
     addAndMakeVisible (lblBleedDecay);
 
+    bleedEnable    .setTooltip ("Blurs each cell's energy into its neighbors. Smooths the pixelated checkerboard look.");
+    bleedFreqWidth .setTooltip ("How many vertical (frequency) cells each cell bleeds into.");
+    bleedPanWidth  .setTooltip ("How many horizontal (pan) cells each cell bleeds into.");
+    bleedDecayPct  .setTooltip ("Per-frame decay of the bled signal. Lower = more sustained smear; higher = quick fade.");
+
     // --- APVTS attachments ---
     linkAttachment        = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment>(processor.apvts, "linkToSensitivity", linkToSensitivity);
     sensitivityAttachment = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(processor.apvts, "sensitivityDb", sensitivity);
@@ -101,6 +121,7 @@ EQHeatmapAudioProcessorEditor::EQHeatmapAudioProcessorEditor (EQHeatmapAudioProc
     hotRefAttachment      = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(processor.apvts, "hotRefPct", hotRefPct);
     gammaAttachment       = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(processor.apvts, "gamma", gamma);
     trailAttachment       = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(processor.apvts, "trailMs", trailMs);
+    noiseGateAttachment   = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(processor.apvts, "noiseGate", noiseGate);
     peakFocusAttachment   = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(processor.apvts, "peakFocus", peakFocus);
 
     bleedEnableAttachment   = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment>(processor.apvts, "bleedEnable", bleedEnable);
@@ -111,6 +132,7 @@ EQHeatmapAudioProcessorEditor::EQHeatmapAudioProcessorEditor (EQHeatmapAudioProc
     addAndMakeVisible (readoutFollow);
     readoutFollowAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment>(
         processor.apvts, "readoutFollowCursor", readoutFollow);
+    readoutFollow.setTooltip ("When ON, the hover readout follows your cursor. When OFF, it pins to the top-right corner of the plot.");
 
     linkToSensitivity.onClick = [this] { updateRangeEnablement(); };
     updateRangeEnablement();
@@ -145,8 +167,8 @@ void EQHeatmapAudioProcessorEditor::resized()
     // Drawer column.
     auto col = controlsPanel;
 
-    // Visualizer Controls — toggle + 7 stacked rows
-    auto ctrlBox = col.removeFromTop (336);
+    // Visualizer Controls — toggle + 8 stacked rows
+    auto ctrlBox = col.removeFromTop (372);
     controlsGroup.setBounds (ctrlBox);
     auto ctrlInner = ctrlBox.reduced (14, 30);
 
@@ -167,6 +189,7 @@ void EQHeatmapAudioProcessorEditor::resized()
     placeRow (ctrlInner, lblHotRef,      hotRefPct);
     placeRow (ctrlInner, lblGamma,       gamma);
     placeRow (ctrlInner, lblTrail,       trailMs);
+    placeRow (ctrlInner, lblNoiseGate,   noiseGate);
     placeRow (ctrlInner, lblPeakFocus,   peakFocus);
 
     col.removeFromTop (14);
@@ -219,6 +242,7 @@ void EQHeatmapAudioProcessorEditor::paint (juce::Graphics& g)
     //     With Peak Focus enabled, cells are softened relative to the frame's max.
 
     // First pass: compute per-frame max of the curve-applied values (for peak focus).
+    const float gate     = processor.apvts.getRawParameterValue ("noiseGate")->load() / 100.0f;
     const float focus    = processor.apvts.getRawParameterValue ("peakFocus")->load() / 100.0f;
     const float focusExp = 1.0f + focus * 4.0f;
     float frameMaxCurved = 0.001f; // small floor to avoid divide-by-zero
@@ -229,7 +253,7 @@ void EQHeatmapAudioProcessorEditor::paint (juce::Graphics& g)
             for (int px = 0; px < cols; ++px)
             {
                 const float v = processor.getCellValue (fy, px);
-                if (v > 0.05f)
+                if (v > gate)
                 {
                     const float vc = eq::applyDisplayCurve (v);
                     if (vc > frameMaxCurved) frameMaxCurved = vc;
@@ -246,7 +270,7 @@ void EQHeatmapAudioProcessorEditor::paint (juce::Graphics& g)
             for (int px = 0; px < cols; ++px)
             {
                 const float v = processor.getCellValue (fy, px);
-                if (v <= 0.05f) {
+                if (v <= gate) {
                     bd.setPixelColour (px, yDst, juce::Colour (juce::uint32 (0)));
                     continue;
                 }
