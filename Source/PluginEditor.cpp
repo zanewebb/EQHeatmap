@@ -287,3 +287,24 @@ void EQHeatmapAudioProcessorEditor::paint (juce::Graphics& g)
                 juce::Rectangle<int> (plot.getX(), plot.getBottom() + 20, plot.getWidth(), 12),
                 juce::Justification::centred, false);
 }
+
+void EQHeatmapAudioProcessorEditor::mouseMove (const juce::MouseEvent& e)
+{
+    const auto p = e.getPosition();
+    const bool inPlot = plotArea.contains (p);
+    const juce::Point<int> next = inPlot ? p : juce::Point<int> { -1, -1 };
+    if (next != hoverPos)
+    {
+        hoverPos = next;
+        repaint (plotArea); // cheap: only the plot rect, not the whole editor
+    }
+}
+
+void EQHeatmapAudioProcessorEditor::mouseExit (const juce::MouseEvent&)
+{
+    if (hoverPos != juce::Point<int> { -1, -1 })
+    {
+        hoverPos = { -1, -1 };
+        repaint (plotArea);
+    }
+}

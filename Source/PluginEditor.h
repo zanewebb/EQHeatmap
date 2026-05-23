@@ -14,6 +14,9 @@ public:
     void paint (juce::Graphics&) override;
     void resized() override;
 
+    void mouseMove (const juce::MouseEvent& e) override;
+    void mouseExit (const juce::MouseEvent& e) override;
+
 private:
     EQHeatmapAudioProcessor& processor;
     eq::HeatTheme theme;
@@ -28,6 +31,9 @@ private:
 
     // Cached layout rectangles, populated by resized() and consumed by paint().
     juce::Rectangle<int> plotArea, controlsPanel;
+
+    // Hover state for HUD readout. (-1, -1) = cursor not over the plot.
+    juce::Point<int> hoverPos { -1, -1 };
 
     // Controls
     juce::GroupComponent controlsGroup { "controlsGroup", "Visualizer Controls" };
