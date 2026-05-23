@@ -286,6 +286,80 @@ void EQHeatmapAudioProcessorEditor::paint (juce::Graphics& g)
     g.drawText ("PAN",
                 juce::Rectangle<int> (plot.getX(), plot.getBottom() + 20, plot.getWidth(), 12),
                 juce::Justification::centred, false);
+
+    // --- Hover HUD ---
+    if (hoverPos.x >= 0 && hoverPos.y >= 0 && plotArea.contains (hoverPos))
+    {
+        using P = EQHeatmapAudioProcessor;
+
+        // Reverse-map cursor (x, y) -> (panIdx, freqIdx) -> (pan, freq, cellValue).
+        auto plotInner = plotArea.withTrimmedLeft (64).withTrimmedBottom (30); // mirrors leftLabelW/bottomH
+        const float tX = juce::jlimit (0.0f, 1.0f,
+            (float) (hoverPos.x - plotInner.getX()) / (float) plotInner.getWidth());
+        const float tY = juce::jlimit (0.0f, 1.0f,
+            1.0f - (float) (hoverPos.y - plotInner.getY()) / (float) plotInner.getHeight());
+
+        const int panIdx  = juce::jlimit (0, P::kPanBins  - 1, (int) std::round (tX * (P::kPanBins  - 1)));
+        const int freqIdx = juce::jlimit (0, P::kFreqBins - 1, (int) std::round (tY * (P::kFreqBins - 1)));
+
+        const float pan  = -1.0f + 2.0f * tX;
+        const float freq = processor.getFreqMinHz()
+            * std::exp (tY * std::log (processor.getFreqMaxHz() / processor.getFreqMinHz()));
+        const float v    = processor.getCellValue (freqIdx, panIdx);
+
+        // Approximate dB using user-set Lower/Upper bounds.
+        const float lowerDb = processor.apvts.getRawParameterValue ("rangeLowerDb")->load();
+        const float upperDb = processor.apvts.getRawParameterValue ("rangeUpperDb")->load();
+        const float approxDb = lowerDb + v * (upperDb - lowerDb);
+
+        // Format the readout string.
+        auto fmtFreq = [] (float f) -> juce::String {
+            if (f >= 10000.0f) return juce::String ((int) std::round (f / 1000.0f)) + "k Hz";
+            if (f >= 1000.0f)  return juce::String (f / 1000.0f, 1) + "k Hz";
+            return juce::String ((int) std::round (f)) + " Hz";
+        };
+        auto fmtPan = [] (float p) -> juce::String {
+            if (std::abs (p) < 0.02f) return juce::String ("C");
+            return (p >= 0 ? "+" : "") + juce::String (p, 2);
+        };
+        const juce::String readout = fmtFreq (freq) + "   |   " + fmtPan (pan)
+                                   + "   |   ~ " + juce::String ((int) std::round (approxDb)) + " dB";
+
+        // Crosshair lines from cursor to gutters.
+        g.setColour (eq::Brand::text.withAlpha (0.25f));
+        g.drawLine ((float) hoverPos.x, (float) hoverPos.y,
+                    (float) plotArea.getX(), (float) hoverPos.y, 1.0f);
+        g.drawLine ((float) hoverPos.x, (float) hoverPos.y,
+                    (float) hoverPos.x, (float) plotArea.getBottom(), 1.0f);
+
+        // Pill geometry.
+        const int pillW = 200;
+        const int pillH = 22;
+        const bool follow = processor.apvts.getRawParameterValue ("readoutFollowCursor")->load() > 0.5f;
+
+        int pillX, pillY;
+        if (follow)
+        {
+            pillX = hoverPos.x + 14;
+            pillY = hoverPos.y - 32;
+            if (pillX + pillW > plotArea.getRight())  pillX = hoverPos.x - 14 - pillW;
+            if (pillY < plotArea.getY() + 4)          pillY = hoverPos.y + 18;
+        }
+        else
+        {
+            pillX = plotArea.getRight() - pillW - 10;
+            pillY = plotArea.getY() + 10;
+        }
+
+        auto pill = juce::Rectangle<float> ((float) pillX, (float) pillY, (float) pillW, (float) pillH);
+        g.setColour (juce::Colour (0xE6141620));
+        g.fillRoundedRectangle (pill, 4.0f);
+        g.setColour (eq::Brand::panelEdge);
+        g.drawRoundedRectangle (pill, 4.0f, 1.0f);
+        g.setColour (eq::Brand::text);
+        g.setFont (juce::Font (juce::FontOptions ("SF Mono", 11.0f, juce::Font::plain)));
+        g.drawText (readout, pill.toNearestInt(), juce::Justification::centred, false);
+    }
 }
 
 void EQHeatmapAudioProcessorEditor::mouseMove (const juce::MouseEvent& e)
