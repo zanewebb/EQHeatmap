@@ -103,6 +103,10 @@ EQHeatmapAudioProcessorEditor::EQHeatmapAudioProcessorEditor (EQHeatmapAudioProc
     bleedPanWidthAttachment = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(processor.apvts, "bleedPanWidth",  bleedPanWidth);
     bleedDecayPctAttachment = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(processor.apvts, "bleedDecayPct",  bleedDecayPct);
 
+    addAndMakeVisible (readoutFollow);
+    readoutFollowAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment>(
+        processor.apvts, "readoutFollowCursor", readoutFollow);
+
     linkToSensitivity.onClick = [this] { updateRangeEnablement(); };
     updateRangeEnablement();
 
@@ -172,6 +176,12 @@ void EQHeatmapAudioProcessorEditor::resized()
     placeRow (bInner, lblBleedFreq,  bleedFreqWidth);
     placeRow (bInner, lblBleedPan,   bleedPanWidth);
     placeRow (bInner, lblBleedDecay, bleedDecayPct);
+
+    col.removeFromTop (14);
+
+    // Single toggle pill, no group box — it's a one-control row.
+    auto readoutRow = col.removeFromTop (22);
+    readoutFollow.setBounds (readoutRow);
 }
 
 static juce::String hzLabel (float f)

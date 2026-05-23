@@ -49,6 +49,8 @@ private:
     juce::Slider bleedFreqWidth, bleedPanWidth, bleedDecayPct;
     juce::Label  lblBleedFreq, lblBleedPan, lblBleedDecay;
 
+    juce::ToggleButton readoutFollow { "Follow Cursor" };
+
     // Attachments
     std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> linkAttachment;
     std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> sensitivityAttachment;
@@ -62,6 +64,8 @@ private:
     std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> bleedFreqWidthAttachment;
     std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> bleedPanWidthAttachment;
     std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> bleedDecayPctAttachment;
+
+    std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> readoutFollowAttachment;
 
     void timerCallback() override { repaint(); }  // 60 Hz
 
