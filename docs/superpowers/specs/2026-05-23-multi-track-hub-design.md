@@ -1,11 +1,66 @@
 # Multi-Track Hub + Satellites — Roadmap Spec
 
 **Date:** 2026-05-23
-**Status:** Future / not scheduled. Captured as a roadmap reference.
+**Status:** Ableton-first MVP scoped (see below). Full spec is the long-term target.
 
 ## Goal
 
 Show every track's spectrum on a single overlaid heatmap with per-track colors, so a mix engineer can see "where each element lives in the stereo soundstage" without having to A/B between solo'd tracks. Hovering a track name dims all but that track's contribution.
+
+---
+
+## Ableton-First MVP (next session)
+
+A deliberately scoped-down version aimed at one DAW, one OS, one weekend of work. Strip the spec to its essential value: per-track colored overlay on a Mac running Ableton Live.
+
+### Scope reductions vs full spec
+
+- **macOS only.** No Windows shared-memory path. POSIX `shm_open` / `mmap` only.
+- **Ableton only for testing.** The plugin itself is DAW-agnostic (VST3 + AU), so it will work in Logic, Reaper, Bitwig identically — but only Ableton is the test target for the MVP.
+- **8-satellite cap** in v1. Keeps the color palette simple (8 Wong-distinguishable hues) and the shared-memory scan bounded.
+- **No mute/solo per track in v1.** The hub just shows everything that's connected. Mute/solo can be added in v1.1.
+- **No persisted track names.** Names live in the satellite's plugin state — when the user reopens the Ableton project, the names re-load with the plugin instance.
+- **Additive blend only.** No max-blend or active-only-blend modes in v1.
+
+### Effort breakdown (~10–14 hours of focused work)
+
+| Piece | Effort | Files |
+|---|---|---|
+| Split CMake into Satellite + Hub plugin targets | 30 min | `CMakeLists.txt` — two `juce_add_plugin` calls, one preprocessor define (`EQHEATMAP_HUB`) |
+| macOS POSIX shared-memory layer (`shm_open` + `mmap` wrapper) | 2–3 hr | new `Source/SharedHeatmap.{h,cpp}` (~120 LOC). UUID generation, region naming `/eqheatmap-<uuid>`, header validation, GC by timestamp. |
+| Satellite GUI redesign (strip visualizer, add name field + color picker + frame writer) | 2 hr | new `Source/SatelliteEditor.{h,cpp}` (replaces current `PluginEditor` when `EQHEATMAP_HUB` undefined). Reuses `HeatTheme`. |
+| Hub overlay renderer (loop over satellites, blend per-color) | 3–4 hr | reworked `paint()` in a new `HubEditor.cpp`. Reuses 90% of existing render code; replaces magma with per-satellite-tint. |
+| Hub track-list panel (right drawer addition) | 2–3 hr | new sub-component. Scrollable list, color swatch + name per row, hover-to-isolate handler that dims non-hovered satellites to ~20%. |
+| Smoke test in a real Ableton session (3-5 tracks) | 1 hr | iterate on color choices, blend opacity, panel layout |
+
+### What the user does in Ableton (v1 workflow)
+
+1. **First-time setup per project:**
+   - Insert the **Satellite** plugin on each track they want visualized (drums, bass, vocals, etc.).
+   - In each Satellite UI: type the track name (one-time per project), pick a color (auto-assigned from the 8-color palette, overridable).
+   - Insert the **Hub** plugin on the master bus (or any track for visualization-only).
+2. **Daily use:** open the Hub UI. See all 8 (or fewer) tracks overlaid with their colors. Hover a track in the side panel to isolate that color visually.
+
+### v1 limitations to flag in release notes
+
+- Track names don't auto-detect from Ableton — must be manually typed in each satellite's GUI.
+- Re-opening an Ableton project: Ableton will restore plugin instances with their saved state (names + colors), but the UUIDs are regenerated on plugin reload. Hub will see them as new satellites and re-discover. Should be transparent to the user.
+- Max 8 simultaneous satellites. If you need more, queue them or wait for v1.1.
+
+### Path to running this MVP
+
+After implementation:
+1. Build a `Hub` AU/VST3 and a `Satellite` AU/VST3 (two bundles, separate names so DAWs distinguish them).
+2. The Satellite is what you put on each track. The Hub is what you put on the master.
+3. The existing CI workflow (`.github/workflows/release.yml`) already builds VST3 + AU — just needs to be updated to package both bundles.
+
+### When to start
+
+Spec is ready. Effort is bounded. Recommend tackling this as a focused 1–2 weekend project after the current single-plugin readability work has been used in real mixing sessions and any kinks are fixed.
+
+---
+
+## Full Spec (post-MVP target)
 
 ## Architecture
 

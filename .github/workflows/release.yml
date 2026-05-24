@@ -1,0 +1,96 @@
+name: Build & Release
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-macos:
+    name: Build macOS (VST3 + AU)
+    runs-on: macos-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install build tools
+        run: brew install cmake ninja
+
+      # Cache the JUCE source pulled by FetchContent so we don't re-clone
+      # JUCE (~70 MB) on every run. Key on the JUCE tag pinned in CMakeLists.
+      - name: Cache JUCE source
+        uses: actions/cache@v4
+        with:
+          path: build/_deps/juce-src
+          key: juce-8.0.9-${{ runner.os }}
+          restore-keys: juce-8.0.9-
+
+      - name: Configure
+        run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build
+        run: cmake --build build --config Release
+
+      - name: Package
+        run: |
+          STAGING="$GITHUB_WORKSPACE/release-staging"
+          mkdir -p "$STAGING"
+          cp -R build/EQHeatmap_artefacts/Release/VST3/EQHeatmap.vst3       "$STAGING/"
+          cp -R build/EQHeatmap_artefacts/Release/AU/EQHeatmap.component    "$STAGING/"
+          # Tiny install hint inside the zip
+          cat > "$STAGING/README.txt" <<'EOF'
+          EQHeatmap — install on macOS
+          ============================
+
+          1. Copy EQHeatmap.vst3       -> ~/Library/Audio/Plug-Ins/VST3/
+          2. Copy EQHeatmap.component  -> ~/Library/Audio/Plug-Ins/Components/
+
+          First-launch Gatekeeper warning ("cannot be opened because the
+          developer cannot be verified"): right-click the .vst3 or .component
+          folder in Finder -> Open. macOS will remember the exception.
+
+          Then rescan plugins in your DAW (Logic auto-scans on launch;
+          Ableton: Preferences -> Plug-Ins -> Rescan with Alt held).
+
+          Source + docs: https://github.com/zanewebb/EQHeatmap
+          EOF
+          cd "$STAGING"
+          zip -r "$GITHUB_WORKSPACE/EQHeatmap-macOS.zip" .
+
+      - name: Upload CI artifact (always)
+        uses: actions/upload-artifact@v4
+        with:
+          name: EQHeatmap-macOS
+          path: EQHeatmap-macOS.zip
+          retention-days: 30
+
+      # Stable release: triggered by pushing a v* tag (e.g., git tag v0.2.0 && git push --tags)
+      - name: Tagged release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: EQHeatmap-macOS.zip
+          generate_release_notes: true
+
+      # Rolling nightly: every push to main replaces the "nightly" tag/release.
+      - name: Nightly release
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: nightly
+          name: Nightly (latest main)
+          body: |
+            Rolling pre-release built from the latest commit on `main`.
+
+            **Commit:** ${{ github.sha }}
+            **Built:** ${{ github.event.head_commit.timestamp }}
+
+            Download the zip below for the latest unsigned macOS VST3 + AU bundles.
+            See `README.txt` inside for install instructions.
+          prerelease: true
+          files: EQHeatmap-macOS.zip
